@@ -29,33 +29,33 @@ type MaybeMatch<T, K> = {
 //   }
 // }
 
-export type Maybe<T> = ImplNothing | ImplJust<T>
+export type Maybe<T> = ImplNothing<T> | ImplJust<T>
 
 function of<V>(v: V): Maybe<V> {
   return new ImplJust(v);
 }
 
-class ImplNothing {
+class ImplNothing<A> {
   constructor() {};
   match<K>(m: MaybeMatch<any, K>): K {
     return m.nothing();
   }
-  of = of;
-  chain(f: (v: T) => Maybe<T>): Maybe<T> {
+  of: <B>(v: B) => Maybe<B> = of;
+  chain<B>(f: (v: any) => Maybe<B>): Maybe<B> {
     return this;
   }
 }
 
-class ImplJust<T> {
-  val: T;
-  constructor(val: T) {
+class ImplJust<A> {
+  val: A;
+  constructor(val: A) {
     this.val = val;
   }
-  match<K>(m: MaybeMatch<T, K>): K {
+  match<K>(m: MaybeMatch<A, K>): K {
     return m.just(this.val);
   }
-  of = of;
-  chain(f: (v: T) => Maybe<T>): Maybe<T> {
+  of: <V>(v: V) => Maybe<V> = of;
+  chain<B>(f: (v: A) => Maybe<B>): Maybe<B> {
     return this.match({
       just: f,
       nothing: () => this
@@ -63,10 +63,10 @@ class ImplJust<T> {
   }
 }
 
-export function Just<V>(v: V) {
+export function Just<V>(v: V): Maybe<V> {
   return new ImplJust(v);
 }
 
-export function Nothing<V>() {
+export function Nothing<V>(): Maybe<V> {
   return new ImplNothing();
 }
