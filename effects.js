@@ -33,3 +33,7 @@ export function runEffects<A>(e: Effects<A>): Promise<A> {
 export function withEffects<A>(fn) {
   return (...args) => new ImplEffects(() => Promise.resolve(fn(...args)));
 }
+
+export function ap<A, B>(fe: Effects<(a: A) => B>, ve: Effects<A>): Effects<B> {
+  return fe.chain(f => ve.chain(v => of(f(v))));
+}

@@ -3,7 +3,7 @@ import * as assert from "assert";
 
 import "babel-polyfill";
 
-import {of, runEffects, withEffects} from "../effects";
+import {of, runEffects, withEffects, ap} from "../effects";
 import {Do} from "../monad";
 
 describe("effects", () => {
@@ -29,5 +29,11 @@ describe("effects", () => {
     return runEffects(comp).then((res) => {
       assert.equal(10, res);
     });
+  });
+  it("applies function in effects to value in other effects", () => {
+    const f1 = of(a => a * 2);
+    const f2 = of(3);
+    const applied = ap(f1, f2);
+    return runEffects(applied).then(res => assert.equal(res, 6));
   });
 });
