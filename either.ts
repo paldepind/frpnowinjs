@@ -1,5 +1,3 @@
-/* @flow */
-
 export type Either<A, B> = Left<A> | Right<B>;
 
 type EitherMatch<A, B, K> = {

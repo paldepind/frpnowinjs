@@ -1,8 +1,6 @@
-/* @flow */
+import {Monad} from "./monad";
 
-import type {Monad} from "./monad";
-
-type Effects<A> = ImplEffects<A>;
+export type Effects<A> = ImplEffects<A>;
 
 type ImpureComp<A> = () => Promise<A>;
 
@@ -15,7 +13,6 @@ class ImplEffects<A> {
     return new ImplEffects(() => Promise.resolve(k));
   }
   chain<B>(f: (v: A) => Effects<B>): Effects<B> {
-    // return new ImplEffects(() => f(this.comp()).comp());
     return new ImplEffects(() => this.comp().then(r => f(r).comp()));
   }
 }

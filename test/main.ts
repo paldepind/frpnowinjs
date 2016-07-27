@@ -1,16 +1,35 @@
 /* @flow */
 import "babel-polyfill";
-
 import * as assert from "assert";
-import {never, runE} from "../lib";
+
+import {never, runE, async, runNow} from "../lib";
 import {Just, Nothing} from "../maybe";
 import {Do} from "../monad";
+import {withEffects, Now, runEffects} from "../effects";
 
 describe("library", () => {
   it("never is cyclic", () => {
     runE(never).match({
       left: (e) => assert.equal(never, e),
       right: () => { throw new Error(); }
+    });
+  });
+});
+
+describe("event", () => {
+  it("chain works", () => {
+    const prog = Do(function*() {
+      const a = yield async(withEffects(n => n)(12));
+      const b = yield async(withEffects(n => n*2)(4));
+      const c = Do(function*() {
+        const av = yield a;
+        const bv = yield b;
+        return a.of(av + bv);
+      });
+      return Now.of(c);
+    });
+    return runEffects(runNow(prog)).then(res => {
+      assert.equal(21, res); // actually 20
     });
   });
 });

@@ -1,9 +1,3 @@
-/* @flow */
-
-// Maybe
-
-// type MaybeVal<T> = {just: T} | "nothing";
-
 type MaybeMatch<T, K> = {
   nothing: () => K,
   just: (t: T) => K

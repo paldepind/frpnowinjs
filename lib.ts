@@ -1,9 +1,9 @@
-/* @flow */
-
 import {Monad, Do} from "./monad";
-import type {Maybe} from "./maybe";
-import type {Either} from "./either";
+import {Maybe} from "./maybe";
+import {Either} from "./either";
 import {Left, Right} from "./either";
+import {Effects} from "./effects";
+import * as Eff from "./effects";
 
 type Time = number;
 
@@ -12,19 +12,19 @@ class E<A> {
   constructor(e: Either<E<A>, A>) {
     this.val = e;
   }
-  pure<T>(t: T): E<T> {
+  of<T>(t: T): E<T> {
     return new E(new Right(t));
   }
   chain<T>(f: (t: T) => E<T>): E<T> {
-    val.match({
-      left: (e) => Left(e.chain(f))
+    return this.val.match({
+      left: (e) => new Left(e.chain(f)),
       right: f
     });
   }
 }
 
 function minTime<A, B>(e1: E<A>, e2: E<B>): E<{}> {
-  
+  return e1;
 }
 
 export function runE<A>(e: E<A>): Either<E<A>, A> {
@@ -41,16 +41,14 @@ class Behavior<A> {
     this.val = val;
     this.next = next;
   }
-  pure<B>(b: B): Behavior<B> {
+  of<B>(b: B): Behavior<B> {
     return new Behavior(b, never);
   }
   chain<B>(f: (a: A) => Behavior<B>): Behavior<B> {
     return next.match({
-      right: 
+      right: 12,
       left: () => this.val
-    })
-    const m = this.fn;
-    return new Behavior((t) => f(m(t)).fn(t));
+    });
   }
 }
 
@@ -64,9 +62,11 @@ function whenJust<B>(b: B) {
 
 // M monad stuff
 
+type Round = number;
+
 class Clock {
   id: number;
-  roundNumber: number;
+  roundNumber: number; // mutable
   constructor() {
     this.id = 0;
     this.roundNumber = 0;
@@ -78,14 +78,68 @@ type Plan<A> = {
   result: Maybe<A>
 }
 
-// function plan<A>(n: E<Now<A>>): Now<E<A>> {
-// }
+type PrimE<A> = {ref: Maybe<[Round, A]>}; // mutable ref
 
-// Now stuff
+function spawn<A>(c: Clock, e: Effects<A>): Effects<PrimE<A>> {
+  return Do(function* () {
+    let mv = {ref: Nothing ()};
+    Eff.runEffects(e).then(res => {
+      mv.ref = Just([c.roundNumber, res])
+    });
+    return Eff.of(mv);
+  });
+}
 
-type Now<A> = {res: A};
+function observeAt<A>(re: PrimE<A>, r: Round): Maybe<A> {
+  const e = re.ref;
+  return e.match({
+    Nothing: Nothing,
+    Just: ([r1, a]) => r1 <= r ? Just(r) : Nothing()
+  });
+}
 
-function runNow<A>(n: Now<E<A>>) { 
+// Mutable globals
+
+let plans;
+let clock;
+
+export class Now<A> {
+  comp: Effects<A>;
+  constructor(a: Effects<A>) {
+    this.val = a;
+  }
+  of<B>(b: B) {
+    return new Now(Eff.of(b));
+  }
+  static of<B>(b: B) {
+    return new Now((b));
+  }
+  chain<B>(f: (a: A) => Now<B>): Now<B> {
+    return f(this.val);
+  }
+}
+
+// Now API
+
+function async<A>(e: Effects<A>): Now<E<A>> {
+  return Now.of(spawn(clock, e));
+  // return Do(function* () {
+  // });
+}
+
+function toE<A>(pe: PrimE<A>): E<A> {
+  
+}
+
+function sample<A>(b: Behavior<A>): Now<A> {
+}
+
+function plan<A>(p: E<Now<A>>): Now<E<A>> {
+}
+
+function runNow<A>(n: Now<E<A>>): Effects<A> {
+  plans = [];
+  clock = new Clock();
 }
 
 // Derived combinators
