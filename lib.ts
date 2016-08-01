@@ -1,55 +1,106 @@
 import {Monad, Do} from "./monad";
-import {Maybe} from "./maybe";
+import {Maybe, Nothing, Just} from "./maybe";
 import {Either} from "./either";
 import {Left, Right} from "./either";
-import {Effects} from "./effects";
+import {Effects, withEffects} from "./effects";
 import * as Eff from "./effects";
 
 type Time = number;
 
-class E<A> {
-  val: Either<E<A>, A>;
-  constructor(e: Either<E<A>, A>) {
+type E<A> = EImpl<A>;
+
+class EImpl<A> {
+  val: Effects<Either<E<A>, A>>;
+  constructor(e: Effects<Either<E<A>, A>>) {
     this.val = e;
   }
   of<T>(t: T): E<T> {
-    return new E(new Right(t));
+    return E(Eff.of(Right(t)));
   }
-  chain<T>(f: (t: T) => E<T>): E<T> {
-    return this.val.match({
-      left: (e) => new Left(e.chain(f)),
-      right: f
-    });
+  map<B>(f: (a: A) => B): E<B> {
+    return E<B>(this.val.chain(e => e.match({
+      right: v => Eff.of(Right(f(v))),
+      left: v => runE(v.map(f))
+    })));
   }
+  chain<T>(f: (t: A) => E<T>): E<T> {
+    return E<T>(this.val.chain(v => v.match({
+      left: (e) => Eff.of(Left(e.chain(f))),
+      right: (t: A) => (f(t)).val
+    })));
+  }
+}
+
+function E<A>(e: Effects<Either<E<A>, A>>) {
+  return new EImpl<A>(e);
 }
 
 function minTime<A, B>(e1: E<A>, e2: E<B>): E<{}> {
-  return e1;
+  return E(runE(e1).chain(v1 => runE(e2).chain(v2 => {
+    return Eff.of(v1.match({
+      right: _ => Right({}),
+      left: l1 => v2.match({
+        right: _ => Right({}),
+        left: l2 => Left(minTime(l1, l2))
+      })
+    }));
+  })));
 }
 
-export function runE<A>(e: E<A>): Either<E<A>, A> {
+export function runE<A>(e: E<A>): Effects<Either<E<A>, A>> {
   return e.val;
 }
 
-export const never = new E(new Left(never));
-never.val = new Left(never);
+export const never = E(Eff.of(Left(undefined)));
+never.val = Eff.of(Left(never)); // cyclic
+
+type InB<A> = {val: A, next: E<Behavior<A>>}
 
 class Behavior<A> {
-  val: A;
-  next: E<Behavior<A>>;
-  constructor(val: A, next: E<Behavior<A>>) {
+  constructor(public val: Effects<InB<A>>) {
     this.val = val;
-    this.next = next;
   }
   of<B>(b: B): Behavior<B> {
-    return new Behavior(b, never);
+    return B(Eff.of({val: b, next: never}));
   }
-  chain<B>(f: (a: A) => Behavior<B>): Behavior<B> {
-    return next.match({
-      right: 12,
-      left: () => this.val
-    });
+  static of<B>(b: B): Behavior<B> {
+    return B(Eff.of({val: b, next: never}));
   }
+  // chain<B>(f: (a: A) => Behavior<B>): Behavior<B> {
+  //   return B(this.next.match({
+  //     right: 12,
+  //     left: () => this.val
+  //   }));
+  // }
+  flatten(b: Behavior<Behavior<A>>): Behavior<A> {
+    return B(runB(b).chain(({val, next}) => {
+      return runB(zwitch(val, next.map(this.flatten)));
+    }));
+  }
+}
+
+function runB<A>(b: Behavior<A>): Effects<InB<A>> {
+  return b.val;
+}
+
+function B<A>(v: Effects<InB<A>>): Behavior<A> {
+  return new Behavior(v);
+}
+
+function zwitch<A>(b: Behavior<A>, e: E<Behavior<A>>): Behavior<A> {
+  // runE(e)
+  return B(runE(e).chain(either => either.match<Effects<InB<A>>>({
+    left: ne => {
+      return runB(b).chain(({val, next}) => {
+        return Eff.of({val: val, next: switchE(next, ne)});
+      });
+    },
+    right: b => runB(b)
+  })));
+}
+
+function switchE<A>(e1: E<Behavior<A>>, e2: E<Behavior<A>>): E<Behavior<A>> {
+  return minTime(e1, e2).map(_ => zwitch(zwitch(Behavior.of(undefined), e1), e2));
 }
 
 // function switcher<A>(b: Behavior<A>, e: E<Behavior<A>>): Behavior<A> {
@@ -66,10 +117,10 @@ type Round = number;
 
 class Clock {
   id: number;
-  roundNumber: number; // mutable
+  round: Round; // mutable
   constructor() {
     this.id = 0;
-    this.roundNumber = 0;
+    this.round = 0;
   }
 }
 
@@ -81,54 +132,65 @@ type Plan<A> = {
 type PrimE<A> = {ref: Maybe<[Round, A]>}; // mutable ref
 
 function spawn<A>(c: Clock, e: Effects<A>): Effects<PrimE<A>> {
-  return Do(function* () {
-    let mv = {ref: Nothing ()};
-    Eff.runEffects(e).then(res => {
-      mv.ref = Just([c.roundNumber, res])
-    });
-    return Eff.of(mv);
+  let mv = {ref: Nothing()};
+  Eff.runEffects(e).then(res => {
+    mv.ref = Just([c.round, res])
   });
+  return Eff.of(mv);
 }
 
 function observeAt<A>(re: PrimE<A>, r: Round): Maybe<A> {
   const e = re.ref;
   return e.match({
-    Nothing: Nothing,
-    Just: ([r1, a]) => r1 <= r ? Just(r) : Nothing()
+    nothing: Nothing,
+    just: ([r1, a]) => r1 <= r ? Just(r) : Nothing()
   });
 }
 
 // Mutable globals
 
-let plans;
-let clock;
+let plans: Plan<any>[];
+let clock: Clock;
 
 export class Now<A> {
   comp: Effects<A>;
   constructor(a: Effects<A>) {
-    this.val = a;
+    this.comp = a;
   }
   of<B>(b: B) {
     return new Now(Eff.of(b));
   }
   static of<B>(b: B) {
-    return new Now((b));
+    return new Now(Eff.of(b));
   }
   chain<B>(f: (a: A) => Now<B>): Now<B> {
-    return f(this.val);
+    return new Now(this.comp.chain(v => f(v).comp));
   }
+  map<B>(f: (a: A) => B): Now<B> {
+    return this.chain(v => this.of(f(v)));
+  }
+}
+
+// lift an Effect into the Now monad
+function liftIO<A>(e: Effects<A>): Now<A> {
+  return new Now(e);
 }
 
 // Now API
 
+const curRound: Effects<Round> = withEffects(() => clock.round)();
+
 function async<A>(e: Effects<A>): Now<E<A>> {
-  return Now.of(spawn(clock, e));
-  // return Do(function* () {
-  // });
+  return liftIO(spawn(clock, e)).map(toE);
 }
 
 function toE<A>(pe: PrimE<A>): E<A> {
-  
+  return E(curRound.map(r => {
+    return observeAt<A>(pe, r).match({
+      just: v => Right(v),
+      nothing: () => Left(toE(pe))
+    });
+  }));
 }
 
 function sample<A>(b: Behavior<A>): Now<A> {
@@ -143,9 +205,6 @@ function runNow<A>(n: Now<E<A>>): Effects<A> {
 }
 
 // Derived combinators
-
-function switchE<A>(e1: E<Behavior<A>>, e2: E<Behavior<A>>): E<Behavior<A>> {  
-}
 
 function when(b: Behavior<boolean>): Behavior<E<{}>> {
   return whenJust(ap(boolToMaybe, b));

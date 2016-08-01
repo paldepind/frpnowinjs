@@ -15,6 +15,9 @@ class ImplEffects<A> {
   chain<B>(f: (v: A) => Effects<B>): Effects<B> {
     return new ImplEffects(() => this.comp().then(r => f(r).comp()));
   }
+  map<B>(f: (a: A) => B): Effects<B> {
+    return this.chain(v => this.of(f(v)));
+  }
 }
 
 export function of<B>(k: B): Effects<B> {
@@ -27,8 +30,8 @@ export function runEffects<A>(e: Effects<A>): Promise<A> {
 
 // takes an impure function an converts it to a computation
 // in the effects monad
-export function withEffects<A>(fn) {
-  return (...args) => new ImplEffects(() => Promise.resolve(fn(...args)));
+export function withEffects<A>(fn: any): () => Effects<A> {
+  return (...args: any[]) => new ImplEffects(() => Promise.resolve(fn(...args)));
 }
 
 export function ap<A, B>(fe: Effects<(a: A) => B>, ve: Effects<A>): Effects<B> {

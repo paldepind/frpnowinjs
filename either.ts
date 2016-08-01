@@ -1,26 +1,34 @@
-export type Either<A, B> = Left<A> | Right<B>;
+export type Either<A, B> = LeftImpl<A, B> | RightImpl<A, B>;
 
 type EitherMatch<A, B, K> = {
   left: (a: A) => K,
   right: (b: B) => K
 }
 
-export class Left<A> {
+class LeftImpl<A, B> {
   val: A;
   constructor(a: A) {
     this.val = a;
   }
-  match<B, K>(m: EitherMatch<A, B, K>): K {
+  match<K>(m: EitherMatch<A, B, K>): K {
     return m.left(this.val);
   }
 }
 
-export class Right<B> {
+class RightImpl<A, B> {
   val: B;
   constructor(b: B) {
     this.val = b;
   }
-  match<A, K>(m: EitherMatch<A, B, K>): K {
+  match<K>(m: EitherMatch<A, B, K>): K {
     return m.right(this.val);
   }
+}
+
+export function Left<A, B>(a: A): Either<A, B> {
+  return new LeftImpl(a);
+}
+
+export function Right<A, B>(b: B): Either<A, B> {
+  return new RightImpl(b);
 }
