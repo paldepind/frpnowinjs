@@ -5,9 +5,9 @@ export interface Monad<A> {
   chain: <B>(f: (a: A) => Monad<B>) => Monad<B>;
 }
 
-export function Do(gen: () => Generator<Monad<any>, Monad<any>, any>) {
+export function Do(gen: () => Iterator<Monad<any>>) {
   const doing = gen();
-  function doRec(v) {
+  function doRec(v: any): any {
     const a = doing.next(v);
     if (a.done === true) {
       return a.value;

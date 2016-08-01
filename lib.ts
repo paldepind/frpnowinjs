@@ -1,7 +1,6 @@
 import {Monad, Do} from "./monad";
 import {Maybe, Nothing, Just} from "./maybe";
-import {Either} from "./either";
-import {Left, Right} from "./either";
+import {Either, Left, Right} from "./either";
 import {Effects, withEffects} from "./effects";
 import * as Eff from "./effects";
 
@@ -25,10 +24,15 @@ class EImpl<A> {
   }
   chain<T>(f: (t: A) => E<T>): E<T> {
     return E<T>(this.val.chain(v => v.match({
-      left: (e) => Eff.of(Left(e.chain(f))),
+      // left: (e) => Eff.thunk(() => Left(e.chain(f))),
+      left: (e: E<A>) => Eff.of(Left(e.chain(f))),
       right: (t: A) => (f(t)).val
     })));
   }
+}
+
+export function ofE<A>(a: A): E<A> {
+  return E(Eff.of(Right(a)));
 }
 
 function E<A>(e: Effects<Either<E<A>, A>>) {
@@ -88,7 +92,6 @@ function B<A>(v: Effects<InB<A>>): Behavior<A> {
 }
 
 function zwitch<A>(b: Behavior<A>, e: E<Behavior<A>>): Behavior<A> {
-  // runE(e)
   return B(runE(e).chain(either => either.match<Effects<InB<A>>>({
     left: ne => {
       return runB(b).chain(({val, next}) => {
@@ -134,7 +137,8 @@ type PrimE<A> = {ref: Maybe<[Round, A]>}; // mutable ref
 function spawn<A>(c: Clock, e: Effects<A>): Effects<PrimE<A>> {
   let mv = {ref: Nothing()};
   Eff.runEffects(e).then(res => {
-    mv.ref = Just([c.round, res])
+    mv.ref = Just([c.round, res]);
+    mainLoop();
   });
   return Eff.of(mv);
 }
@@ -143,7 +147,7 @@ function observeAt<A>(re: PrimE<A>, r: Round): Maybe<A> {
   const e = re.ref;
   return e.match({
     nothing: Nothing,
-    just: ([r1, a]) => r1 <= r ? Just(r) : Nothing()
+    just: ([r1, a]) => r1 <= r ? Just(a) : Nothing()
   });
 }
 
@@ -151,6 +155,8 @@ function observeAt<A>(re: PrimE<A>, r: Round): Maybe<A> {
 
 let plans: Plan<any>[];
 let clock: Clock;
+let resolve: Function;
+let endE: E<any>;
 
 export class Now<A> {
   comp: Effects<A>;
@@ -164,7 +170,7 @@ export class Now<A> {
     return new Now(Eff.of(b));
   }
   chain<B>(f: (a: A) => Now<B>): Now<B> {
-    return new Now(this.comp.chain(v => f(v).comp));
+    return new Now(this.comp.chain((v) => f(v).comp));
   }
   map<B>(f: (a: A) => B): Now<B> {
     return this.chain(v => this.of(f(v)));
@@ -180,39 +186,61 @@ function liftIO<A>(e: Effects<A>): Now<A> {
 
 const curRound: Effects<Round> = withEffects(() => clock.round)();
 
-function async<A>(e: Effects<A>): Now<E<A>> {
+export function async<A>(e: Effects<A>): Now<E<A>> {
   return liftIO(spawn(clock, e)).map(toE);
 }
 
 function toE<A>(pe: PrimE<A>): E<A> {
   return E(curRound.map(r => {
     return observeAt<A>(pe, r).match({
-      just: v => Right(v),
+      just: (v) => Right(v),
       nothing: () => Left(toE(pe))
     });
   }));
 }
 
-function sample<A>(b: Behavior<A>): Now<A> {
-}
+// function sample<A>(b: Behavior<A>): Now<A> {
+// }
 
-function plan<A>(p: E<Now<A>>): Now<E<A>> {
-}
+// function plan<A>(p: E<Now<A>>): Now<E<A>> {
+// }
 
-function runNow<A>(n: Now<E<A>>): Effects<A> {
+export function runNow<A>(n: Now<E<A>>): Effects<A> {
   plans = [];
   clock = new Clock();
+  return Eff.fromPromise(new Promise((res, rej) => {
+    resolve = res;
+    Eff.runEffects(n.comp).then((ev) => {
+      if (!(ev instanceof EImpl)) {
+        rej(new TypeError ("Result of now computation must be event"));
+      } else {
+        endE = ev;
+        mainLoop();
+      }
+    });
+  }));
+}
+
+// invoked when events created by `async` resolve and after running
+// the initial Now computation given to `runNow`
+function mainLoop<A>(): void {
+  Eff.runEffects(runE(endE)).then((v: Either<E<A>, A>) => {
+    v.match({
+      left: () => {},
+      right: (a: A) => resolve(a)
+    });
+  });
 }
 
 // Derived combinators
 
-function when(b: Behavior<boolean>): Behavior<E<{}>> {
-  return whenJust(ap(boolToMaybe, b));
-}
+// function when(b: Behavior<boolean>): Behavior<E<{}>> {
+//   return whenJust(ap(boolToMaybe, b));
+// }
 
-function change<A>(b: Behavior<A>): Behavior<E<{}>> {
-  return Do(function*() {
-    const cur = yield b;
-    return when(ap(v => v !== cur), b);
-  })
-}
+// function change<A>(b: Behavior<A>): Behavior<E<{}>> {
+//   return Do(function*() {
+//     const cur = yield b;
+//     return when(ap(v => v !== cur), b);
+//   })
+// }

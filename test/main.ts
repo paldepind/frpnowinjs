@@ -1,26 +1,46 @@
-/* @flow */
+///<reference path="../typings/index.d.ts" />
 import "babel-polyfill";
 import * as assert from "assert";
 
-import {never, runE, async, runNow} from "../lib";
+import {never, runE, ofE, async, runNow, Now} from "../lib";
 import {Just, Nothing} from "../maybe";
 import {Do} from "../monad";
-import {withEffects, Now, runEffects} from "../effects";
+import {withEffects, runEffects} from "../effects";
 
-describe("library", () => {
+describe("Event", () => {
   it("never is cyclic", () => {
-    runE(never).match({
-      left: (e) => assert.equal(never, e),
-      right: () => { throw new Error(); }
+    return runEffects(runE(never)).then((e) => {
+      e.match({
+        left: (e) => assert.equal(never, e),
+        right: () => { throw new Error(); }
+      });
     });
   });
 });
 
-describe("event", () => {
+describe("Now", () => {
+  it("extremely simple program works", () => {
+    const prog = Do(function*() {
+      const a = yield Now.of(12);
+      return Now.of(ofE(a));
+    });
+    return runEffects(runNow(prog)).then(res => {
+      assert.equal(12, res); // actually 20
+    });
+  });
+  it("quite simple program works", () => {
+    const prog = Do(function*() {
+      const a = yield async(withEffects((n: number) => n)(12));
+      return Now.of(a);
+    });
+    return runEffects(runNow(prog)).then(res => {
+      assert.equal(12, res); // actually 20
+    });
+  });
   it("chain works", () => {
     const prog = Do(function*() {
-      const a = yield async(withEffects(n => n)(12));
-      const b = yield async(withEffects(n => n*2)(4));
+      const a = yield Now.of(ofE(12));
+      const b = yield Now.of(ofE(8));
       const c = Do(function*() {
         const av = yield a;
         const bv = yield b;
@@ -29,7 +49,22 @@ describe("event", () => {
       return Now.of(c);
     });
     return runEffects(runNow(prog)).then(res => {
-      assert.equal(21, res); // actually 20
+      assert.equal(20, res); // actually 20
+    });
+  });
+  it("async works", () => {
+    const prog = Do(function*() {
+      const a = yield Now.of(ofE(12));
+      const b = yield async(withEffects((n: number) => n * 2)(4));
+      const c = Do(function*() {
+        const av = yield a;
+        const bv = yield b;
+        return a.of(av + bv);
+      });
+      return Now.of(c);
+    });
+    return runEffects(runNow(prog)).then(res => {
+      assert.equal(20, res); // actually 20
     });
   });
 });
@@ -43,7 +78,7 @@ describe("maybe", () => {
     const j = Just(12);
     const n = Nothing();
     assert.deepEqual(j.chain(_ => Nothing()), n);
-    assert.deepEqual(n.chain(_ => Just(12)), n);
+    assert.deepEqual(n.chain<number>(_ => Just(12)), n);
   });
   it("passes values through", () => {
     const res = Do(function*() {

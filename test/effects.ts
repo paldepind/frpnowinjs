@@ -18,8 +18,8 @@ describe("effects", () => {
     });
   });
   it("works with do-notation", () => {
-    const f1 = withEffects((a) => a * 2);
-    const f2 = withEffects((a, b) => a + b);
+    const f1 = withEffects((a: number) => a * 2);
+    const f2 = withEffects((a: number, b: number) => a + b);
     const comp = Do(function*() {
       const a = yield of(4);
       const b = yield f1(3);
@@ -31,7 +31,7 @@ describe("effects", () => {
     });
   });
   it("applies function in effects to value in other effects", () => {
-    const f1 = of(a => a * 2);
+    const f1 = of((a: number) => a * 2);
     const f2 = of(3);
     const applied = ap(f1, f2);
     return runEffects(applied).then(res => assert.equal(res, 6));

@@ -28,10 +28,18 @@ export function runEffects<A>(e: Effects<A>): Promise<A> {
   return e.comp();
 }
 
+export function thunk<A>(t: () => A): Effects<A> {
+  return new ImplEffects(() => Promise.resolve(t()));
+}
+
 // takes an impure function an converts it to a computation
 // in the effects monad
-export function withEffects<A>(fn: any): () => Effects<A> {
+export function withEffects<A>(fn: any): (...a: any[]) => Effects<A> {
   return (...args: any[]) => new ImplEffects(() => Promise.resolve(fn(...args)));
+}
+
+export function fromPromise<A>(p: Promise<A>): Effects<A> {
+  return new ImplEffects(() => p);
 }
 
 export function ap<A, B>(fe: Effects<(a: A) => B>, ve: Effects<A>): Effects<B> {
