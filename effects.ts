@@ -1,4 +1,4 @@
-import {Monad} from "./monad";
+// import {Monad} from "./monad";
 
 export type Effects<A> = ImplEffects<A>;
 
@@ -34,8 +34,12 @@ export function thunk<A>(t: () => A): Effects<A> {
 
 // takes an impure function an converts it to a computation
 // in the effects monad
-export function withEffects<A>(fn: any): (...a: any[]) => Effects<A> {
+export function withEffects<A>(fn: any): (...as: any[]) => Effects<A> {
   return (...args: any[]) => new ImplEffects(() => Promise.resolve(fn(...args)));
+}
+
+export function withEffectsP<A>(fn: (...as: any[]) => Promise<A>): (...a: any[]) => Effects<A> {
+  return (...args: any[]) => new ImplEffects(() => fn(...args));
 }
 
 export function fromPromise<A>(p: Promise<A>): Effects<A> {

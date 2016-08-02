@@ -5,7 +5,7 @@ import * as assert from "assert";
 import {never, runE, ofE, async, runNow, Now} from "../lib";
 import {Just, Nothing} from "../maybe";
 import {Do} from "../monad";
-import {withEffects, runEffects} from "../effects";
+import {withEffects, withEffectsP, runEffects} from "../effects";
 
 describe("Event", () => {
   it("never is cyclic", () => {
@@ -65,6 +65,29 @@ describe("Now", () => {
     });
     return runEffects(runNow(prog)).then(res => {
       assert.equal(20, res); // actually 20
+    });
+  });
+  it("finishes when IO performed with async is done", (cb) => {
+    let resolve: (n: boolean) => void;
+    let done = false;
+    const fn = withEffectsP(() => {
+      return new Promise((res) => {
+        resolve = res;
+      });
+    });
+    const prog = Do(function*(): Iterator<Now<any>> {
+      return async(fn());
+    });
+    runEffects(runNow(prog)).then((res: boolean) => {
+      done = res;
+    });
+    setTimeout(() => {
+      assert.strictEqual(done, false);
+      resolve(true);
+      setTimeout(() => {
+        assert.strictEqual(done, true);
+        cb();
+      });
     });
   });
 });
