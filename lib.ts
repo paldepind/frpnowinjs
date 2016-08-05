@@ -60,7 +60,7 @@ never.val = Eff.of(Left(never)); // cyclic
 
 type InB<A> = {val: A, next: E<Behavior<A>>}
 
-class Behavior<A> {
+export class Behavior<A> {
   constructor(public val: Effects<InB<A>>) {
     this.val = val;
   }
@@ -83,15 +83,24 @@ class Behavior<A> {
   }
 }
 
-function runB<A>(b: Behavior<A>): Effects<InB<A>> {
+export function runB<A>(b: Behavior<A>): Effects<InB<A>> {
   return b.val;
+}
+
+export function apB<A, B>(bf: Behavior<(a: A) => B>, ba: Behavior<A>): Behavior<B> {
+  return B<B>(
+    runB(bf).chain(f => runB(ba).chain(a => Eff.of({
+      val: f.val(a.val),
+      next: minTime(f.next, a.next)
+    })))
+  );
 }
 
 function B<A>(v: Effects<InB<A>>): Behavior<A> {
   return new Behavior(v);
 }
 
-function zwitch<A>(b: Behavior<A>, e: E<Behavior<A>>): Behavior<A> {
+export function zwitch<A>(b: Behavior<A>, e: E<Behavior<A>>): Behavior<A> {
   return B(runE(e).chain(either => either.match<Effects<InB<A>>>({
     left: ne => {
       return runB(b).chain(({val, next}) => {

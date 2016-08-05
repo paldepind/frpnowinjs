@@ -2,9 +2,10 @@
 import "babel-polyfill";
 import * as assert from "assert";
 
-import {never, runE, ofE, async, runNow, Now} from "../lib";
+import {Behavior, runB, apB, never, runE, ofE, async, runNow, Now, plan, zwitch} from "../lib";
 import {Just, Nothing} from "../maybe";
 import {Do} from "../monad";
+import * as Eff from "../effects";
 import {withEffects, withEffectsP, runEffects} from "../effects";
 
 describe("Event", () => {
@@ -14,6 +15,17 @@ describe("Event", () => {
         left: (e) => assert.equal(never, e),
         right: () => { throw new Error(); }
       });
+    });
+  });
+});
+
+describe("Behavior", () => {
+  it("ap works on constant behavior", () => {
+    const b1 = Behavior.of((x: number) => x * x);
+    const b2 = Behavior.of(12);
+    const append = apB(b1, b2);
+    return runEffects(runB(append)).then((res) => {
+      assert.equal(res.val, 12 * 12);
     });
   });
 });
