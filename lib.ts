@@ -1,38 +1,36 @@
 import {Monad, Do} from "./monad";
-import {Maybe, Nothing, Just} from "./maybe";
-import {Either, Left, Right} from "./either";
-import {Effects, withEffects} from "./effects";
+import {Maybe, nothing, just} from "../jabz/src/maybe";
+import {Either, left, right} from "../jabz/src/either";
+import {
+  Effects, withEffects, wrapEffects, runEffects, thunk
+} from "./effects";
 import * as Eff from "./effects";
 
 type Time = number;
 
-type E<A> = EImpl<A>;
+export type E<A> = EImpl<A>;
 
 class EImpl<A> {
-  val: Effects<Either<E<A>, A>>;
-  constructor(e: Effects<Either<E<A>, A>>) {
-    this.val = e;
-  }
+  constructor(public val: Effects<Either<E<A>, A>>) {}
   of<T>(t: T): E<T> {
-    return E(Eff.of(Right(t)));
+    return E(Eff.of(right(t)));
   }
   map<B>(f: (a: A) => B): E<B> {
     return E<B>(this.val.chain(e => e.match({
-      right: v => Eff.of(Right(f(v))),
-      left: v => runE(v.map(f))
+      right: v => Eff.of(right(f(v))),
+      left: v => Eff.of(left(E(thunk(() => v.map(f).val))))
     })));
   }
   chain<T>(f: (t: A) => E<T>): E<T> {
     return E<T>(this.val.chain(v => v.match({
-      // left: (e) => Eff.thunk(() => Left(e.chain(f))),
-      left: (e: E<A>) => Eff.of(Left(e.chain(f))),
+      left: (e: E<A>) => Eff.of(left(e.chain(f))),
       right: (t: A) => (f(t)).val
     })));
   }
 }
 
 export function ofE<A>(a: A): E<A> {
-  return E(Eff.of(Right(a)));
+  return E(Eff.of(right(a)));
 }
 
 function E<A>(e: Effects<Either<E<A>, A>>) {
@@ -42,10 +40,10 @@ function E<A>(e: Effects<Either<E<A>, A>>) {
 function minTime<A, B>(e1: E<A>, e2: E<B>): E<{}> {
   return E(runE(e1).chain(v1 => runE(e2).chain(v2 => {
     return Eff.of(v1.match({
-      right: _ => Right({}),
+      right: _ => right({}),
       left: l1 => v2.match({
-        right: _ => Right({}),
-        left: l2 => Left(minTime(l1, l2))
+        right: _ => right({}),
+        left: l2 => left(minTime(l1, l2))
       })
     }));
   })));
@@ -55,8 +53,8 @@ export function runE<A>(e: E<A>): Effects<Either<E<A>, A>> {
   return e.val;
 }
 
-export const never = E(Eff.of(Left(undefined)));
-never.val = Eff.of(Left(never)); // cyclic
+export const never = E(Eff.of(left(undefined)));
+never.val = Eff.of(left(never)); // cyclic
 
 type InB<A> = {val: A, next: E<Behavior<A>>}
 
@@ -155,14 +153,14 @@ function spawn<A>(c: Clock, e: Effects<A>): Effects<PrimE<A>> {
 function observeAt<A>(re: PrimE<A>, r: Round): Maybe<A> {
   const e = re.ref;
   return e.match({
-    nothing: Nothing,
-    just: ([r1, a]) => r1 <= r ? Just(a) : Nothing()
+    nothing: nothing,
+    just: ([r1, a]) => r1 <= r ? just(a) : nothing()
   });
 }
 
 // Mutable globals
 
-let plans: Plan<any>[];
+let plans: Ref<Plan<any>>[];
 let clock: Clock;
 let resolve: Function;
 let endE: E<any>;
@@ -202,8 +200,8 @@ export function async<A>(e: Effects<A>): Now<E<A>> {
 function toE<A>(pe: PrimE<A>): E<A> {
   return E(curRound.map(r => {
     return observeAt<A>(pe, r).match({
-      just: (v) => Right(v),
-      nothing: () => Left(toE(pe))
+      just: (v) => right(v),
+      nothing: () => left(toE(pe))
     });
   }));
 }

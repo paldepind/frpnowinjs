@@ -25,10 +25,10 @@ class RightImpl<A, B> {
   }
 }
 
-export function Left<A, B>(a: A): Either<A, B> {
+export function left<A, B>(a: A): Either<A, B> {
   return new LeftImpl(a);
 }
 
-export function Right<A, B>(b: B): Either<A, B> {
+export function right<A, B>(b: B): Either<A, B> {
   return new RightImpl(b);
 }

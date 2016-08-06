@@ -23,13 +23,13 @@ type MaybeMatch<T, K> = {
 //   }
 // }
 
-export type Maybe<T> = ImplNothing<T> | ImplJust<T>
+export type Maybe<T> = Nothing<T> | Just<T>
 
 function of<V>(v: V): Maybe<V> {
-  return new ImplJust(v);
+  return new Just(v);
 }
 
-class ImplNothing<A> {
+class Nothing<A> {
   constructor() {};
   match<K>(m: MaybeMatch<any, K>): K {
     return m.nothing();
@@ -40,7 +40,7 @@ class ImplNothing<A> {
   }
 }
 
-class ImplJust<A> {
+class Just<A> {
   val: A;
   constructor(val: A) {
     this.val = val;
@@ -57,10 +57,10 @@ class ImplJust<A> {
   }
 }
 
-export function Just<V>(v: V): Maybe<V> {
-  return new ImplJust(v);
+export function just<V>(v: V): Maybe<V> {
+  return new Just(v);
 }
 
-export function Nothing<V>(): Maybe<V> {
-  return new ImplNothing();
+export function nothing<V>(): Maybe<V> {
+  return new Nothing();
 }
