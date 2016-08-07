@@ -44,6 +44,16 @@ describe("Behavior", () => {
       assert.equal(res.val, 24);
     });
   });
+  it("can sample constant behavior", () => {
+    const prog = Do(function*() {
+      const b = Behavior.of(6);
+      const n = yield sample(b);
+      return Now.of(ofE(n));
+    });
+    return runEffects(runNow(prog)).then((res) => {
+      assert.strictEqual(res, 6);
+    });
+  });
 });
 
 describe("Now", () => {

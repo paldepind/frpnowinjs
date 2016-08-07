@@ -247,6 +247,10 @@ function mainLoop<A>(): void {
   });
 }
 
+export function sample<A>(b: Behavior<A>): Now<A> {
+  return new Now(b.val.map(({val}) => val));
+}
+
 // Derived combinators
 
 // function when(b: Behavior<boolean>): Behavior<E<{}>> {
