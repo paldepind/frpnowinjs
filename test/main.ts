@@ -37,6 +37,13 @@ describe("Behavior", () => {
       assert.equal(res.val, 12 * 12);
     });
   });
+  it("map works on constant behavior", () => {
+    const b = Behavior.of(12);
+    const b2 = b.map((n) => n * 2);
+    return runEffects(runB(b2)).then((res) => {
+      assert.equal(res.val, 24);
+    });
+  });
 });
 
 describe("Now", () => {

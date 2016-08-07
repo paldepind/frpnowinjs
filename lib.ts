@@ -68,6 +68,14 @@ export class Behavior<A> {
   static of<B>(b: B): Behavior<B> {
     return B(Eff.of({val: b, next: never}));
   }
+  map<B>(f: (a: A) => B): Behavior<B> {
+    return B(this.val.map(({val, next}) => {
+      return {
+        val: f(val),
+        next: next.map(b => b.map(f))
+      };
+    }));
+  }
   // chain<B>(f: (a: A) => Behavior<B>): Behavior<B> {
   //   return B(this.next.match({
   //     right: 12,
