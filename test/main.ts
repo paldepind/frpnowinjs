@@ -2,7 +2,10 @@
 import "babel-polyfill";
 import * as assert from "assert";
 
-import {Behavior, E, runB, apB, B, never, runE, ofE, async, runNow, Now, plan, zwitch} from "../lib";
+import {
+  Behavior, E, runB, apB, B, never, runE, ofE, async, runNow,
+  Now, plan, switcher, whenJust, when, sample
+} from "../lib";
 import {just, nothing} from "../maybe";
 import {Do} from "../monad";
 import * as Eff from "../effects";
@@ -46,12 +49,59 @@ describe("Behavior", () => {
   });
   it("can sample constant behavior", () => {
     const prog = Do(function*() {
-      const b = Behavior.of(6);
+      const b = Behavior.of(18);
       const n = yield sample(b);
       return Now.of(ofE(n));
     });
     return runEffects(runNow(prog)).then((res) => {
-      assert.strictEqual(res, 6);
+      assert.strictEqual(res, 18);
+    });
+  });
+  it("can whenJust a constant Just behavior", () => {
+    const prog = Do(function*() {
+      const b = Behavior.of(just(77));
+      const ev = yield sample(whenJust(b));
+      return Now.of(ev);
+    });
+    return runEffects(runNow(prog)).then((res) => {
+      assert.strictEqual(res, 77);
+    });
+  });
+  it("can whenJust a constant Nothing behavior", () => {
+    const prog = Do(function*() {
+      const b = Behavior.of(nothing());
+      const ev = yield sample(whenJust(b));
+      console.log("OMOMOMOMOMOME");
+      return Now.of(ofE(8));
+    });
+    return runEffects(runNow(prog)).then((res) => {
+      assert.strictEqual(res, 8);
+    });
+  });
+  it("behavior switches to event of behavior", () => {
+    let resolve: (b: Behavior<boolean>) => void;
+    function getTrueBeh(): Effects<Behavior<number>> {
+      return withEffectsP(() => {
+        return new Promise((res) => {
+          resolve = res;
+        });
+      })();
+    }
+    const prog1 = Do(function*() {
+      const ev = yield async(getTrueBeh());
+      const b = switcher(Behavior.of(false), ev);
+      console.log("######## pre endE");
+      const endE = yield sample(when(b));
+      console.log("######## post endE", endE);
+      return Now.of(endE.map((_: boolean) => 4));
+    });
+    setTimeout(() => {
+      console.log("resolving");
+      resolve(Behavior.of(true));
+    });
+    return runEffects(runNow(prog1)).then((res) => {
+      console.log("Res", res);
+      assert.strictEqual(res, 4);
     });
   });
 });
@@ -162,7 +212,7 @@ describe("Now", () => {
   //     return Do(function* () {
   //       const e = yield async(Eff.of({}));
   //       const e1 = plan(e.map((_: any) => loop(i + 1)));
-  //       return Now.of(zwitch(ofE(i), e1));
+  //       return Now.of(switcher(ofE(i), e1));
   //     });
   //   }
   //   const count = Do(function* () {

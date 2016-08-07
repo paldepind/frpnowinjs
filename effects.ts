@@ -30,7 +30,6 @@ export function runEffects<A>(e: Effects<A>): Promise<A> {
 }
 
 export function thunk<A>(t: () => Effects<A>): Effects<A> {
-  console.log("thunk ");
   return new Effects(() => t().comp());
 }
 

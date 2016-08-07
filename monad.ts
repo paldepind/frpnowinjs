@@ -14,7 +14,7 @@ export function Do(gen: () => Iterator<Monad<any>>) {
     } else if (typeof a.value !== "undefined") {
       return a.value.chain(doRec);
     } else {
-      throw new Error("Expected monad value")
+      throw new Error("Expected monad value");
     }
   };
   return doRec(null);
