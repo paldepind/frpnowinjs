@@ -56,24 +56,22 @@ export function runE<A>(e: E<A>): Effects<Either<E<A>, A>> {
 export const never = E(Eff.of(left(undefined)));
 never.val = Eff.of(left(never)); // cyclic
 
-type InB<A> = {val: A, next: E<Behavior<A>>}
+type InB<A> = {cur: A, next: E<Behavior<A>>}
 
 export class Behavior<A> {
   constructor(public val: Effects<InB<A>>) {
     this.val = val;
   }
   of<B>(b: B): Behavior<B> {
-    return B(Eff.of({val: b, next: never}));
+    return B(Eff.of({cur: b, next: never}));
   }
   static of<B>(b: B): Behavior<B> {
-    console.log("now of");
-    return B(Eff.of({val: b, next: never}));
+    return B(Eff.of({cur: b, next: never}));
   }
   map<B>(f: (a: A) => B): Behavior<B> {
-    console.log(">>>>>>>>>> map");
-    return B(this.val.map(({val, next}) => {
+    return B(this.val.map(({cur, next}) => {
       return {
-        val: f(val),
+        cur: f(cur),
         next: next.map(b => b.map(f))
       };
     }));
@@ -85,8 +83,8 @@ export class Behavior<A> {
   //   }));
   // }
   flatten(b: Behavior<Behavior<A>>): Behavior<A> {
-    return B(runB(b).chain(({val, next}) => {
-      return runB(switcher(val, next.map(this.flatten)));
+    return B(runB(b).chain(({cur, next}) => {
+      return runB(switcher(cur, next.map(this.flatten)));
     }));
   }
 }
@@ -98,7 +96,7 @@ export function runB<A>(b: Behavior<A>): Effects<InB<A>> {
 export function apB<A, B>(bf: Behavior<(a: A) => B>, ba: Behavior<A>): Behavior<B> {
   return B<B>(
     runB(bf).chain(f => runB(ba).chain(a => Eff.of({
-      val: f.val(a.val),
+      cur: f.cur(a.cur),
       next: minTime(f.next, a.next)
     })))
   );
@@ -109,14 +107,14 @@ export function B<A>(v: Effects<InB<A>>): Behavior<A> {
 }
 
 export function switcher<A>(b: Behavior<A>, e: E<Behavior<A>>): Behavior<A> {
-  console.log("entering switcher ************");
-  console.log(e);
+  // console.log("entering switcher ************");
+  // console.log(e);
   return B(runE(e).chain(either => {
-    console.log("in switcher **************");
+    // console.log("in switcher **************");
     return either.match<Effects<InB<A>>>({
       left: (ne) => {
-        return runB(b).chain(({val, next}) => {
-          return Eff.of({val: val, next: switchE(next, ne)});
+        return runB(b).chain(({cur, next}) => {
+          return Eff.of({cur, next: switchE(next, ne)});
         });
       },
       right: (b) => runB(b)
@@ -134,24 +132,16 @@ function switchE<A>(e1: E<Behavior<A>>, e2: E<Behavior<A>>): E<Behavior<A>> {
 // }
 
 export function whenJust<A>(b: Behavior<Maybe<A>>): Behavior<E<A>> {
-  return B( // fixme should be lazy
-    runB(b).chain((v: InB<Maybe<A>>) => {
-      console.log("in when just chain");
-      return v.val.match({
-        just: (x) => Eff.of({val: ofE(x), next: v.next.map(whenJust)}),
-        nothing: () => planM(v.next.map(b => runB(whenJust(b)))).chain((en) => {
-          console.log("Deeper in whenJust");
-          console.log(en);
-          try {
-            console.log(Eff.of({val: en.chain(o => o.val), next: en.chain(o => o.next)}));
-          } catch (e) {
-            console.log(e);
-          }
-          return Eff.of({val: en.chain(o => o.val), next: en.chain(o => o.next)});
-        })
-      });
-    })
-  );
+  return B(runB(b).chain((v: InB<Maybe<A>>) => {
+    console.log("In when just chain, current is:", v.cur);
+    return v.cur.match({
+      just: (x) => Eff.of({cur: ofE(x), next: v.next.map(whenJust)}),
+      nothing: () => planM(v.next.map(b => runB(whenJust(b)))).chain((en) => {
+        console.log("Deeper in whenJust, matched nothing, made new plan");
+        return Eff.of({cur: en.chain(o => o.cur), next: en.chain(o => o.next)});
+      })
+    });
+  }));
 }
 
 // M monad stuff
@@ -170,6 +160,7 @@ class Clock {
 type Plan<A> = {
   computation: E<Effects<A>>,
   result: Maybe<A> // mutable
+  , name: string // temp
 }
 
 type Ref<A> = {
@@ -181,6 +172,7 @@ type PrimE<A> = {ref: Maybe<[Round, A]>}; // mutable ref
 function spawn<A>(c: Clock, e: Effects<A>): Effects<PrimE<A>> {
   let mv = {ref: nothing()};
   Eff.runEffects(e).then(res => {
+    console.log("");
     console.log("Spawned stuff finished with result", res);
     mv.ref = just([c.round, res]);
     mainLoop();
@@ -231,6 +223,10 @@ function liftIO<A>(e: Effects<A>): Now<A> {
   return new Now(e);
 }
 
+export function effMapM_<A, B>(f: (a: A) => Effects<B>, arr: A[]): Effects<{}> {
+  return arr.reduce((acc, cur) => acc.chain(_ => f(cur)), Eff.of({}));
+}
+
 // Now API
 
 const readClock = wrapEffects(() => clock);
@@ -251,17 +247,22 @@ function toE<A>(pe: PrimE<A>): E<A> {
 }
 
 function planToEv<A>(p: Plan<A>): E<A> {
-  console.log("planToEv called");
-  const {result: pstate, computation: ev} = p;
-  const ef = pstate.match({
+  console.log("---1 planToEv called");
+  const ef = () => p.result.match({
     just: (x) => Eff.of(right(x)), // plan has been runned, return result
     nothing: () => {
-      console.log("last seen here");
-      return runE(ev).chain(estate => {
-        console.log("never getting here :(");
+      console.log("---2 Running plan");
+      return runE(p.computation).chain(estate => {
+        console.log("---3 Returning plan state as ev:", estate);
         return estate.match({
-          left: (_) => Eff.of(left(planToEv(p))), // ---------- probably thunk here
+          left: (_) => {
+            return Eff.of(left(E(thunk(() => {
+              console.log("Calling planToEv from thunk", plan.name);
+              return runE(planToEv(p));
+            }))));
+          },
           right: (m) => m.chain(v => {
+            console.log("---4 Result:", v);
             p.result = just(v); // mutate result into plan
             return Eff.of(right(v));
           })
@@ -269,7 +270,7 @@ function planToEv<A>(p: Plan<A>): E<A> {
       });
     }
   });
-  return E(ef);
+  return E(thunk(ef));
 }
 
 export function plan<A>(pl: E<Now<A>>): Now<E<A>> {
@@ -279,8 +280,9 @@ export function plan<A>(pl: E<Now<A>>): Now<E<A>> {
     // runEffects(runE(pl)).then(() => console.log("this works"));
     const p: Plan<A> = {
       computation: pl.map(getNow),
-      result: nothing()
+      result: nothing(), name: "plan"
     };
+    console.log("************************------------ Adding plan from plan", plans.length + 1);
     addPlan({ref: p});
     console.log("calling planToEv from plan");
     return planToEv(p);
@@ -291,31 +293,37 @@ function planM<A>(pl: E<Effects<A>>): Effects<E<A>> {
   return withEffects(() => {
     const p: Plan<A> = {
       computation: pl,
-      result: nothing()
+      result: nothing(), name: "planM"
     };
+    console.log("***********************------------ Adding plan from planM", plans.length + 1);
     addPlan({ref: p});
     return planToEv(p);
   })();
 }
 
-function addPlan(plan: Ref<Plan<any>>) {
+function addPlan(plan: Ref<Plan<any>>): void {
   plans.push(plan);
 }
 
-function tryPlans() {
-  console.log("trying plans", plans.length);
-  plans.forEach(tryPlan);
+function tryPlans(): Effects<{}> {
+  console.log("--------------- Trying plans, nr. of plans:", plans.length);
+  return effMapM_(tryPlan, plans);
 }
 
 function tryPlan<A>(refPlan: Ref<Plan<A>>): Effects<{}> {
   const plan = refPlan.ref;
+  console.log("------------*** Trying plan from ", plan.name);
   return runE(planToEv(plan)).chain((eres) => {
+    console.log("---- Result of trying plan", eres);
     return eres.match({
       right: (x) => {
-        pull(refPlan, plans); // plan is done, remove it
-        return Eff.of(undefined);
+        console.log("-------------------- Plan done ", plan.name);
+        let nrOf = plans.length;
+        pull(refPlan, plans); // plan is done, remove
+        console.log("nr of plans whent from", nrOf, "to", plans.length);
+        return Eff.of({});
       },
-      left: () => Eff.of(undefined)
+      left: () => Eff.of({})
     });
   });
 }
@@ -327,8 +335,7 @@ export function runNow<A>(n: Now<E<A>>): Effects<A> {
   endE = undefined;
   return Eff.fromPromise(new Promise((res, rej) => {
     resolve = res;
-    console.log("1/2: Starting initial now comp");
-    console.log(n.comp);
+    console.log("1/2: Starting initial now comp", n.comp);
     Eff.runEffects(n.comp).then((ev) => {
       console.log("2/2: Finished running initial now comp");
       console.log(ev);
@@ -348,18 +355,24 @@ export function runNow<A>(n: Now<E<A>>): Effects<A> {
 // the initial Now computation given to `runNow`
 function mainLoop<A>(): void {
   console.log("1/ mainLoop", endE, endE ? "" : "<-- is undef :(");
-  Eff.runEffects(runE(endE)).then((v: Either<E<A>, A>) => {
-    console.log("2/ pulled in endE");
-    v.match({
-      left: () => tryPlans(),
-      right: (a: A) => resolve(a)
+  Eff.runEffects(tryPlans().chain(_ => {
+    console.log("-------------- Done trying plans");
+    return runE(endE).chain((v: Either<E<A>, A>) => {
+      console.log("2/ pulled in endE");
+      console.log(v);
+      return v.match({
+        left: () => Eff.of({}),
+        right: (a: A) => {
+          resolve(a);
+          return Eff.of({});
+        }
+      });
     });
-  });
+  }));
 }
 
 export function sample<A>(b: Behavior<A>): Now<A> {
-  console.log("Entering sample");
-  return new Now(b.val.map(({val}) => val));
+  return new Now(b.val.map(({cur}) => cur));
 }
 
 // Derived combinators
