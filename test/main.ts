@@ -2,7 +2,7 @@ import * as assert from "assert";
 
 import {
   Behavior, E, runB, apB, B, never, runE, ofE, async, runNow,
-  Now, plan, switcher, whenJust, when, sample, // change
+  Now, plan, switcher, whenJust, when, sample, change
 } from "../lib";
 import {just, nothing} from "../../jabz/src/maybe";
 import {Do} from "../monad";
@@ -187,7 +187,6 @@ describe("Behavior", () => {
     });
     return runIO(runNow(main())).then((res) => {
       assert.deepEqual({}, res);
-      console.log("\\\\\\\\\\\\\\\\\\\\ Final res:", res);
     });
   });
   it("handles recursively defined behavior", () => {
@@ -200,7 +199,6 @@ describe("Behavior", () => {
       })();
     }
     function loop(n: number): Now<Behavior<number>> {
-      console.log("///////////////// Loop called with:", n);
       return Do(function*() {
         const e = yield async(getNextNr());
         const e1 = yield plan(e.map(loop));
@@ -211,7 +209,6 @@ describe("Behavior", () => {
       return Do(function*() {
         const b: Behavior<number> = yield loop(0);
         const e = yield sample(when(b.map((n: number) => {
-          console.log("-------------------------- comparing ", n, "to", 3);
           return n === 3;
         })));
         return Now.of(e);
@@ -227,6 +224,51 @@ describe("Behavior", () => {
       });
     });
     return runIO(runNow(main())).then((res) => {
+      assert.deepEqual(res, {});
+    });
+  });
+  it("when gives event on behavior change", () => {
+    let done = false;
+    let resolve: (n: number) => void;
+    function getNextNr(): IO<number> {
+      return withEffectsP(() => {
+        return new Promise((res) => {
+          resolve = res;
+        });
+      })();
+    }
+    function loop(n: number): Now<Behavior<number>> {
+      return Do(function*() {
+        const e = yield async(getNextNr());
+        const e1 = yield plan(e.map(loop));
+        return Now.of(switcher(Behavior.of(n), e1));
+      });
+    }
+    function main(): Now<E<number>> {
+      return Do(function*() {
+        const b: Behavior<number> = yield loop(2);
+        const e = yield sample(change(b));
+        return Now.of(e);
+      });
+    }
+    setTimeout(() => {
+      assert.strictEqual(done, false);
+      resolve(2);
+      setTimeout(() => {
+        assert.strictEqual(done, false);
+        resolve(2);
+        setTimeout(() => {
+          assert.strictEqual(done, false);
+          resolve(2);
+          setTimeout(() => {
+            assert.strictEqual(done, false);
+            resolve(3);
+          });
+        });
+      });
+    });
+    return runIO(runNow(main())).then((res) => {
+      done = true;
       assert.deepEqual(res, {});
     });
   });
@@ -314,23 +356,19 @@ describe("Now", () => {
       })();
     }
     function loop(n: number): Now<E<number>> {
-      console.log(n);
       return Do(function*() {
         const e = yield async(getNextNr());
         const e2 = e.map((x: any) => {
-          console.log("xx", x);
           return 7;
         });
-        console.log("pos map");
         return Now.of(e2);
       });
     }
     setTimeout(() => {
       resolve(6);
     });
-    console.log("running main");
     return runIO(runNow(loop(0))).then((result) => {
-      console.log("Finished with result", result);
+      assert.strictEqual(result, 7);
     });
   });
   it("excutes plan asynchronously", () => {
@@ -342,7 +380,6 @@ describe("Now", () => {
       });
     });
     function comp(n: number): Now<number> {
-      console.log("comp ran");
       return Now.of(n * 2);
     }
     const prog = Do(function*(): Iterator<Now<any>> {

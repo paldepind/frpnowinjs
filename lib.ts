@@ -382,12 +382,9 @@ export function when(b: Behavior<boolean>): Behavior<E<{}>> {
   return whenJust(b.map(boolToMaybe));
 }
 
-// export function change<A>(b: Behavior<A>): Behavior<E<{}>> {
-//   return Do(function*() {
-//     const cur = yield b;
-//     return when(ap(v => v !== cur), b);
-//   })
-// }
+export function change<A>(b: Behavior<A>): Behavior<E<{}>> {
+  return b.chain((cur: A) => when(b.map(v => v !== cur)));
+}
 
 function pull<A>(item: A, array: A[]) {
   let index = array.indexOf(item);
