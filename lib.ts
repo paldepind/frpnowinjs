@@ -1,4 +1,3 @@
-import {Monad, Do} from "./monad";
 import {Maybe, nothing, just} from "../jabz/src/maybe";
 import {Either, left, right} from "../jabz/src/either";
 import {
@@ -76,14 +75,21 @@ export class Behavior<A> {
     }));
   }
   // chain<B>(f: (a: A) => Behavior<B>): Behavior<B> {
-  //   return B(this.next.match({
-  //     right: 12,
-  //     left: () => this.val
+  //   return B(runB(this).chain(({cur, next}) => {
+  //     return runB(f(cur)).chain(({cur: innerCur, next: innerNext}) => {
+  //       return IO.of({
+  //         cur: innerCur,
+  //         next: minTime(next, innerNext).map(_ => this.chain(f))
+  //       });
+  //     });
   //   }));
   // }
-  flatten(b: Behavior<Behavior<A>>): Behavior<A> {
+  chain<B>(f: (a: A) => Behavior<B>): Behavior<B> {
+    return Behavior.flatten(this.map(f));
+  }
+  static flatten<A>(b: Behavior<Behavior<A>>): Behavior<A> {
     return B(runB(b).chain(({cur, next}) => {
-      return runB(switcher(cur, next.map(this.flatten)));
+      return runB(switcher(cur, next.map(Behavior.flatten)));
     }));
   }
 }
@@ -347,7 +353,7 @@ export function runNow<A>(n: Now<E<A>>): IO<A> {
 function mainLoop<A>(): void {
   console.log("1/ mainLoop", endE, endE ? "" : "<-- is undef :(");
   runIO(tryPlans().chain(_ => {
-    console.log("-------------- Done trying plans");
+    console.log("-------------- Done trying plans, pulling endE");
     return runE(endE).chain((v: Either<E<A>, A>) => {
       console.log("2/ pulled in endE");
       console.log(v);
@@ -376,7 +382,7 @@ export function when(b: Behavior<boolean>): Behavior<E<{}>> {
   return whenJust(b.map(boolToMaybe));
 }
 
-// function change<A>(b: Behavior<A>): Behavior<E<{}>> {
+// export function change<A>(b: Behavior<A>): Behavior<E<{}>> {
 //   return Do(function*() {
 //     const cur = yield b;
 //     return when(ap(v => v !== cur), b);

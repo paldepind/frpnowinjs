@@ -2,7 +2,7 @@ import * as assert from "assert";
 
 import {
   Behavior, E, runB, apB, B, never, runE, ofE, async, runNow,
-  Now, plan, switcher, whenJust, when, sample
+  Now, plan, switcher, whenJust, when, sample, // change
 } from "../lib";
 import {just, nothing} from "../../jabz/src/maybe";
 import {Do} from "../monad";
@@ -42,6 +42,62 @@ describe("Behavior", () => {
     const b2 = b.map((n) => n * 2);
     return runIO(runB(b2)).then((res) => {
       assert.equal(res.cur, 24);
+    });
+  });
+  describe("Monad instance", () => {
+    it("correctly chains constant behavior", () => {
+      const prog = Do(function*() {
+        const b = Behavior.of(12).chain((n) => Behavior.of(n * 3));
+        const val = yield sample(b);
+        return Now.of(ofE(val));
+      });
+      return runIO(runNow(prog)).then((res) => {
+        assert.equal(res, 36);
+      });
+    });
+    it("correctly flattens nested constant behavior", () => {
+      const prog = Do(function*() {
+        const b = Behavior.flatten(Behavior.of(Behavior.of(7)));
+        const val = yield sample(b);
+        return Now.of(ofE(val));
+      });
+      return runIO(runNow(prog)).then((res) => {
+        assert.equal(res, 7);
+      });
+    });
+    it("correctly chains changing behavior", () => {
+      let resolve: (n: number) => void;
+      function getNr(): IO<number> {
+        return withEffectsP(() => {
+          return new Promise((res) => {
+            resolve = res;
+          });
+        })();
+      }
+      function changingBehavior(n: number): Now<Behavior<number>> {
+        return Do(function*() {
+          const e = yield async(getNr());
+          return Now.of(switcher(Behavior.of(n), e.map(Behavior.of)));
+        });
+      }
+      function main(): Now<E<number>> {
+        return Do(function*() {
+          const b1: Behavior<number> = yield changingBehavior(1);
+          const b2 = b1.chain((n) => {
+            return Behavior.of(n * 3);
+          });
+          const val = yield sample(b2);
+          assert.equal(val, 3);
+          const e = yield sample(when(b2.map((n: number) => n === 6)));
+          return Now.of(e);
+        });
+      }
+      setTimeout(() => {
+        resolve(2);
+      });
+      return runIO(runNow(main())).then((res) => {
+        assert.deepEqual(res, {});
+      });
     });
   });
   it("can sample constant behavior", () => {
