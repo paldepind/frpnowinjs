@@ -4,9 +4,9 @@ import {
   Behavior, E, runB, apB, B, never, runE, ofE, async, runNow,
   Now, plan, switcher, whenJust, when, sample, change
 } from "../lib";
-import {just, nothing} from "../../jabz/src/maybe";
+import {just, nothing} from "jabz/maybe";
 import {Do} from "../monad";
-import {IO, withEffects, withEffectsP, runIO} from "../../jabz/src/io";
+import {IO, withEffects, withEffectsP, runIO} from "jabz/io";
 
 describe("Event", () => {
   it("never is cyclic", () => {

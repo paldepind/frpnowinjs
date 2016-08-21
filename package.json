@@ -23,7 +23,9 @@
     "url": "https://github.com/paldepind/jazzstractions/issues"
   },
   "homepage": "https://github.com/paldepind/jazzstractions#readme",
-  "dependencies": {},
+  "dependencies": {
+    "jabz": "^0.0.5"
+  },
   "devDependencies": {
     "mocha": "^2.5.3",
     "ts-node": "^0.8.0",

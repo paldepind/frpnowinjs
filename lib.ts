@@ -1,8 +1,8 @@
-import {Maybe, nothing, just} from "../jabz/src/maybe";
-import {Either, left, right} from "../jabz/src/either";
+import {Maybe, nothing, just} from "jabz/maybe";
+import {Either, left, right} from "jabz/either";
 import {
   IO, withEffects, wrapEffects, thunk, runIO, fromPromise
-} from "../jabz/src/io";
+} from "jabz/lib/io";
 
 type Time = number;
 
